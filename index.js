@@ -10,17 +10,18 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: "*", // In production, you should restrict this to your actual domain
-    methods: ["GET", "POST"],
+    methods: ["GET", "POST", "OPTIONS"],
     credentials: true
   },
-  // For Vercel deployment:
-  transports: ['websocket', 'polling'],
+  // For Vercel deployment, prioritize polling over websocket:
+  transports: ['polling', 'websocket'],
+  allowUpgrades: true,
   path: '/socket.io/', // Ensure this matches on client side
   // Connection stabilization
-  pingTimeout: 30000,
-  pingInterval: 25000,
-  upgradeTimeout: 30000,
-  maxHttpBufferSize: 1e8 // 100MB
+  pingTimeout: 20000,
+  pingInterval: 15000,
+  upgradeTimeout: 10000,
+  maxHttpBufferSize: 1e6 // 1MB - reduced to prevent timeouts
 });
 
 // Store user colors on the server
@@ -64,9 +65,14 @@ io.on('connection', (socket) => {
   // Announce new user to all clients with their assigned color
   io.emit('user-joined', { userId: socket.id, color: userColor });
 
-  socket.on('disconnect', () => {
-    console.log('A user disconnected', socket.id);
+  socket.on('disconnect', (reason) => {
+    console.log('A user disconnected', socket.id, 'Reason:', reason);
     // We keep the color assigned to maintain consistency if they reconnect
+    
+    // Force cleanup of socket on abrupt disconnections
+    if (reason === 'transport error' || reason === 'ping timeout') {
+      socket.disconnect(true);
+    }
   });
 
   socket.on('chat-message', (msg) => {

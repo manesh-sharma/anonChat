@@ -45,7 +45,8 @@
         // Adaptive connection that works in both development and production
         const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         const socket = io({
-          transports: ['websocket', 'polling'],
+          // For Vercel deployment, use polling first then try websocket
+          transports: ['polling', 'websocket'],
           path: '/socket.io/',
           reconnectionAttempts: 5,
           reconnectionDelay: 1000,
