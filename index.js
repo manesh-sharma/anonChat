@@ -22,11 +22,15 @@ const availableColors = [
   'bg-cyan-500'
 ];
 
+// Fixed colorIndex to ensure consistent color assignment
+let colorIndex = 0;
+
 // Function to assign color to a user
 function assignColorToUser(userId) {
   if (!userColors[userId]) {
-    const colorIndex = Object.keys(userColors).length % availableColors.length;
-    userColors[userId] = availableColors[colorIndex];
+    userColors[userId] = availableColors[colorIndex % availableColors.length];
+    colorIndex++;
+    console.log(`Assigned color ${userColors[userId]} to user ${userId}`);
   }
   return userColors[userId];
 }
@@ -46,21 +50,31 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log('A user disconnected', socket.id);
-    // Optionally, we could remove the user's color here if desired
-    // delete userColors[socket.id];
-    // io.emit('user-left', socket.id);
+    // We keep the color assigned to maintain consistency if they reconnect
   });
 
   socket.on('chat-message', (msg) => {
-    const userColor = userColors[socket.id];
-    console.log('Message received: ' + msg + ' from ' + socket.id + ' with color ' + userColor);
-    
-    // Send the message, sender's ID, and the sender's color
-    io.emit('chat-message', { 
-      text: msg, 
-      userId: socket.id,
-      color: userColor
-    }); // Broadcast the message to all clients
+    try {
+      // Validate the message
+      if (msg === null || msg === undefined) {
+        console.error('Received null or undefined message from', socket.id);
+        return;
+      }
+      
+      // Make sure we have a color assigned
+      const userColor = userColors[socket.id] || assignColorToUser(socket.id);
+      console.log('Message received:', msg, 'from', socket.id, 'with color', userColor);
+      
+      // Send the message, sender's ID, and the sender's color
+      io.emit('chat-message', { 
+        text: String(msg), // Convert to string to handle non-string inputs
+        userId: socket.id,
+        color: userColor
+      });
+    } catch (error) {
+      console.error('Error processing message:', error);
+      socket.emit('error', 'Failed to process message');
+    }
   });  
 });
 
@@ -70,8 +84,13 @@ app.get('/', (req, res) => {
   return res.sendFile('public/index.html');
 });
 
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('Server error:', err);
+  res.status(500).send('Something went wrong!');
+});
+
 server.listen(3000, () => {
   console.log('Server is running on http://localhost:3000');
 });
 
-//nothing here
