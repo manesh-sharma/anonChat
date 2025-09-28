@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <title>chat-app</title>
+</head>
+<body class="bg-gray-100 h-screen flex flex-col">
+    <div class="bg-blue-600 text-white p-4 shadow-md">
+        <h1 class="text-xl font-bold">Chat App</h1>
+    </div>
+    
+    <div id="messageContainer" class="flex-1 p-4 overflow-y-auto space-y-2"></div>
+    
+    <div class="bg-white p-4 border-t border-gray-300 flex gap-2">
+        <input type="text" id="messageInput" placeholder="Type a message..." class="flex-1 px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <button id="sendButton" class="bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700 transition">Send</button>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+
+        const sendButton = document.getElementById('sendButton');
+        const messageInput = document.getElementById('messageInput');
+        
+        // Store user colors (will be populated from server)
+        const userColors = {};
+        
+        // Receive initial color mapping when connecting
+        socket.on('user-colors', (colors) => {
+            console.log('Received user colors:', colors);
+            // Update our local color map with the server's data
+            Object.assign(userColors, colors);
+        });
+        
+        // When a new user joins, add their color
+        socket.on('user-joined', (userData) => {
+            console.log('User joined:', userData);
+            userColors[userData.userId] = userData.color;
+        });
+
+        socket.on('chat-message', (messageData) => {
+            console.log('New message:', messageData);
+            
+            const isOwnMessage = messageData.userId === socket.id;
+            
+            // Get the user's color from our local mapping if not provided directly
+            let messageColor = messageData.color;
+            if (!messageColor && messageData.userId) {
+                messageColor = userColors[messageData.userId];
+            }
+            
+            // Fallback to blue if still no color
+            if (!messageColor) {
+                messageColor = 'bg-blue-500';
+            }
+            
+            const messageElement = document.createElement('div');
+            messageElement.textContent = messageData.text;
+            
+            // Apply different styles based on whether it's the current user's message
+            if (isOwnMessage) {
+                messageElement.className = `${messageColor} text-white p-3 rounded-lg shadow-sm max-w-[80%] break-words`;
+                var wrapper = document.createElement('div');
+                wrapper.className = 'flex justify-end mb-2';
+            } else {
+                messageElement.className = `${messageColor} text-white p-3 rounded-lg shadow-sm max-w-[80%] break-words`;
+                var wrapper = document.createElement('div');
+                wrapper.className = 'flex justify-start mb-2';
+            }
+            
+            // Add a log to debug the color
+            console.log('Message color class:', messageColor);
+            
+            wrapper.appendChild(messageElement);
+            document.getElementById('messageContainer').appendChild(wrapper);
+            
+            // Auto scroll to bottom on new message
+            document.getElementById('messageContainer').scrollTop = document.getElementById('messageContainer').scrollHeight;
+        });
+
+        // Send message function
+        function sendMessage() {
+            const message = messageInput.value.trim();
+            if (message) {
+                socket.emit('chat-message', message);
+                messageInput.value = '';
+            }
+        }
+        
+        // Event listeners
+        sendButton.addEventListener('click', sendMessage);
+        
+        // Allow sending with Enter key
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>
