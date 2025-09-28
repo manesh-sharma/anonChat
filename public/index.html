@@ -5,10 +5,32 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <title>chat-app</title>
+    <style>
+        .offline #messageInput, .offline #sendButton {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+        .connection-status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 5px 10px;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: bold;
+            display: none;
+        }
+        .offline .connection-status {
+            display: block;
+            background-color: #f56565;
+            color: white;
+        }
+    </style>
 </head>
 <body class="bg-gray-100 h-screen flex flex-col">
-    <div class="bg-blue-600 text-white p-4 shadow-md">
+    <div class="bg-blue-600 text-white p-4 shadow-md relative">
         <h1 class="text-xl font-bold">Chat App</h1>
+        <div class="connection-status">Disconnected</div>
     </div>
     
     <div id="messageContainer" class="flex-1 p-4 overflow-y-auto space-y-2"></div>
@@ -20,9 +42,14 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
-        const socket = io("https://anonchat-room.vercel.app", {
+        // Adaptive connection that works in both development and production
+        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const socket = io({
           transports: ['websocket', 'polling'],
-          path: '/socket.io/'
+          path: '/socket.io/',
+          reconnectionAttempts: 5,
+          reconnectionDelay: 1000,
+          timeout: 20000
         });
 
         const sendButton = document.getElementById('sendButton');
@@ -30,6 +57,22 @@
         
         // Store user colors (will be populated from server)
         const userColors = {};
+        
+        // Socket connection status handling
+        socket.on('connect', () => {
+            console.log('Connected to server with ID:', socket.id);
+            document.body.classList.remove('offline');
+        });
+        
+        socket.on('connect_error', (err) => {
+            console.error('Connection error:', err);
+            document.body.classList.add('offline');
+        });
+        
+        socket.on('disconnect', (reason) => {
+            console.log('Disconnected from server:', reason);
+            document.body.classList.add('offline');
+        });
         
         // Receive initial color mapping when connecting
         socket.on('user-colors', (colors) => {

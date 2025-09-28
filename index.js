@@ -11,12 +11,16 @@ const io = new Server(server, {
   cors: {
     origin: "*", // In production, you should restrict this to your actual domain
     methods: ["GET", "POST"],
-    allowedHeaders: ["my-custom-header"],
     credentials: true
   },
   // For Vercel deployment:
   transports: ['websocket', 'polling'],
-  path: '/socket.io/' // Ensure this matches on client side
+  path: '/socket.io/', // Ensure this matches on client side
+  // Connection stabilization
+  pingTimeout: 30000,
+  pingInterval: 25000,
+  upgradeTimeout: 30000,
+  maxHttpBufferSize: 1e8 // 100MB
 });
 
 // Store user colors on the server
