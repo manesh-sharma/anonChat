@@ -20,7 +20,10 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
-        const socket = io();
+        const socket = io("https://anonchat-room.vercel.app", {
+          transports: ['websocket', 'polling'],
+          path: '/socket.io/'
+        });
 
         const sendButton = document.getElementById('sendButton');
         const messageInput = document.getElementById('messageInput');

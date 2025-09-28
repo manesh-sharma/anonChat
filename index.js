@@ -5,7 +5,19 @@ const {Server} = require('socket.io');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+
+// Update Socket.IO configuration for production environments
+const io = new Server(server, {
+  cors: {
+    origin: "*", // In production, you should restrict this to your actual domain
+    methods: ["GET", "POST"],
+    allowedHeaders: ["my-custom-header"],
+    credentials: true
+  },
+  // For Vercel deployment:
+  transports: ['websocket', 'polling'],
+  path: '/socket.io/' // Ensure this matches on client side
+});
 
 // Store user colors on the server
 const userColors = {};
@@ -93,4 +105,6 @@ app.use((err, req, res, next) => {
 server.listen(3000, () => {
   console.log('Server is running on http://localhost:3000');
 });
+
+
 
