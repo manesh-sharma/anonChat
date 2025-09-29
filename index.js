@@ -1,3 +1,6 @@
+// Load environment variables from .env file
+require('dotenv').config();
+
 const express = require('express');
 const http = require('http');
 const path = require('path');
@@ -112,8 +115,11 @@ app.use((err, req, res, next) => {
   res.status(500).send('Something went wrong!');
 });
 
-server.listen(3000, () => {
-  console.log('Server is running on http://localhost:3000');
+// Get port from environment variables or use 3000 as default
+const PORT = process.env.PORT || 3000;
+
+server.listen(PORT, () => {
+  console.log(`Server is running on http://localhost:${PORT}`);
 });
 
 
