@@ -5,104 +5,108 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <title>chat-app</title>
-    <style>
-        html, body {
-            height: 100%;
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
+    <script>
+        // Set the viewport height custom property for mobile
+        function setVh() {
+            let vh = window.innerHeight * 0.01;
+            document.documentElement.style.setProperty('--vh', `${vh}px`);
         }
-        
-        body {
-            display: flex;
-            flex-direction: column;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            height: 100vh; /* Fallback */
+    </script>
+    <style>
+        /* Only minimal custom CSS needed for viewport height */
+        html, body {
+            height: 100vh;
             height: calc(var(--vh, 1vh) * 100);
             overscroll-behavior: none;
         }
         
-        #messageContainer {
-            flex: 1;
-            overflow-y: auto;
-            -webkit-overflow-scrolling: touch;
-            padding-bottom: 8px;
+        .online-dot::before {
+            content: '';
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background-color: #4ade80; /* Green dot */
+            border-radius: 50%;
+            margin-right: 4px;
+            animation: pulse 2s infinite;
         }
         
-        .input-container {
-            position: sticky;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background-color: white;
-            z-index: 10;
-        }
-        
-        @media (max-height: 600px) {
-            .header {
-                padding-top: 8px;
-                padding-bottom: 8px;
+        @keyframes pulse {
+            0% {
+                opacity: 1;
             }
-            .input-container {
-                padding: 8px;
+            50% {
+                opacity: 0.5;
             }
-        }
-        
-        .offline #messageInput, .offline #sendButton {
-            opacity: 0.5;
-            pointer-events: none;
-        }
-        
-        .connection-status {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            padding: 5px 10px;
-            border-radius: 10px;
-            font-size: 12px;
-            font-weight: bold;
-            display: none;
-        }
-        
-        .offline .connection-status {
-            display: block;
-            background-color: #f56565;
-            color: white;
+            100% {
+                opacity: 1;
+            }
         }
     </style>
 </head>
-<body class="bg-gray-100">
-    <div class="header bg-blue-600 text-white p-4 shadow-md relative">
-        <h1 class="text-xl font-bold">ANON Chat</h1>
-        <div class="connection-status">Disconnected</div>
+<body class="flex flex-col h-full overflow-hidden bg-gray-100">
+    <div class="relative bg-blue-600 text-white p-4 shadow-md">
+        <div class="flex justify-between items-center">
+            <h1 class="text-xl font-bold">ANON Chat</h1>
+            <div class="flex items-center gap-2">
+                <div id="connectionStatus" class="hidden py-1 px-2.5 rounded-full text-xs font-semibold bg-red-500 text-white shadow-md flex items-center">
+                    <span class="inline-block w-2 h-2 bg-white rounded-full mr-1.5 animate-ping"></span>
+                    Disconnected
+                </div>
+                <div id="userCount" class="flex items-center text-sm font-medium bg-blue-700 px-3 py-1 rounded-full online-dot">
+                    0 online
+                </div>
+            </div>
+        </div>
     </div>
     
-    <div id="messageContainer" class="p-4 space-y-2 pb-2"></div>
+    <div id="messageContainer" class="flex-1 p-4 space-y-2 overflow-y-auto touch-pan-y"></div>
     
-    <div class="input-container bg-white p-4 border-t border-gray-300 flex gap-2">
-        <input type="text" id="messageInput" placeholder="Type a message..." class="flex-1 px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500">
-        <button id="sendButton" class="bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700 transition whitespace-nowrap">Send</button>
+    <div id="typingIndicator" class="px-4 text-xs text-gray-500 italic h-5"></div>
+    
+    <div class="sticky bottom-0 left-0 right-0 z-10 bg-white p-4 border-t border-gray-300 flex gap-2">
+        <input type="text" id="messageInput" placeholder="Type a message..." 
+               class="flex-1 px-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <button id="sendButton" 
+                class="bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700 transition whitespace-nowrap">
+            Send
+        </button>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
-        // Adaptive connection that works in both development and production
+        // Set initial viewport height
+        setVh();
+        window.addEventListener('resize', setVh);
+        window.addEventListener('orientationchange', setVh);
+        
+        // Warn user when leaving the page
+        window.addEventListener('beforeunload', (event) => {
+            // If connected, show a warning
+            if (socket.connected) {
+                event.preventDefault();
+                event.returnValue = 'Are you sure you want to leave? You will be disconnected from the chat.';
+                return event.returnValue;
+            }
+        });
+        
+        // Socket.IO connection
         const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         const socket = io({
-          // For Vercel deployment, use polling first then try websocket
           transports: ['polling', 'websocket'],
           path: '/socket.io/',
-          reconnectionAttempts: 5,
+          reconnectionAttempts: 10,
           reconnectionDelay: 1000,
           timeout: 20000
         });
+        
+        // Track reconnection attempts
+        let reconnectAttempts = 0;
 
         const sendButton = document.getElementById('sendButton');
         const messageInput = document.getElementById('messageInput');
+        const messageContainer = document.getElementById('messageContainer');
+        const connectionStatus = document.getElementById('connectionStatus');
         
         // Store user colors (will be populated from server)
         const userColors = {};
@@ -110,24 +114,127 @@
         // Socket connection status handling
         socket.on('connect', () => {
             console.log('Connected to server with ID:', socket.id);
-            document.body.classList.remove('offline');
+            reconnectAttempts = 0;
+            connectionStatus.classList.remove('bg-yellow-500');
+            connectionStatus.classList.add('bg-red-500');
+            connectionStatus.innerHTML = `
+                <span class="inline-block w-2 h-2 bg-white rounded-full mr-1.5 animate-ping"></span>
+                Disconnected
+            `;
+            connectionStatus.classList.add('hidden');
+            userCount.classList.remove('opacity-50');
+            userCount.classList.add('online-dot');
+            sendButton.classList.remove('opacity-50', 'cursor-not-allowed');
+            messageInput.classList.remove('opacity-50', 'cursor-not-allowed');
+            
+            // Clear typing indicator when reconnected
+            typingIndicator.textContent = '';
         });
         
         socket.on('connect_error', (err) => {
             console.error('Connection error:', err);
-            document.body.classList.add('offline');
+            reconnectAttempts++;
+            connectionStatus.innerHTML = `
+                <span class="inline-block w-2 h-2 bg-white rounded-full mr-1.5 animate-ping"></span>
+                Disconnected (Retry ${reconnectAttempts}/10)
+            `;
+            connectionStatus.classList.remove('hidden');
+            userCount.classList.add('opacity-50');
+            userCount.classList.remove('online-dot');
+            sendButton.classList.add('opacity-50', 'cursor-not-allowed');
+            messageInput.classList.add('opacity-50', 'cursor-not-allowed');
         });
         
         socket.on('disconnect', (reason) => {
             console.log('Disconnected from server:', reason);
-            document.body.classList.add('offline');
+            connectionStatus.classList.remove('hidden');
+            userCount.textContent = '0 online';
+            userCount.classList.add('opacity-50');
+            userCount.classList.remove('online-dot');
+            sendButton.classList.add('opacity-50', 'cursor-not-allowed');
+            messageInput.classList.add('opacity-50', 'cursor-not-allowed');
+        });
+        
+        socket.on('reconnect_attempt', (attemptNumber) => {
+            console.log('Reconnection attempt:', attemptNumber);
+            connectionStatus.classList.remove('bg-red-500');
+            connectionStatus.classList.add('bg-yellow-500');
+            connectionStatus.innerHTML = `
+                <span class="inline-block w-2 h-2 bg-white rounded-full mr-1.5 animate-ping"></span>
+                Reconnecting... (${attemptNumber}/10)
+            `;
+        });
+        
+        socket.on('reconnect', (attemptNumber) => {
+            console.log('Reconnected on attempt:', attemptNumber);
+            reconnectAttempts = 0;
+        });
+        
+        socket.on('reconnect_error', (error) => {
+            console.error('Reconnection error:', error);
+        });
+        
+        socket.on('reconnect_failed', () => {
+            console.error('Failed to reconnect after all attempts');
+            connectionStatus.classList.remove('bg-yellow-500');
+            connectionStatus.classList.add('bg-red-500');
+            connectionStatus.innerHTML = `
+                <span class="inline-block w-2 h-2 bg-red-800 rounded-full mr-1.5"></span>
+                Connection failed
+                <button id="reconnectBtn" class="ml-2 bg-white text-red-500 px-2 py-0.5 text-xs rounded-full hover:bg-gray-100">
+                    Retry
+                </button>
+            `;
+            
+            // Add click event for the reconnect button
+            setTimeout(() => {
+                const reconnectBtn = document.getElementById('reconnectBtn');
+                if (reconnectBtn) {
+                    reconnectBtn.addEventListener('click', () => {
+                        console.log('Manual reconnection attempt');
+                        // Force a page reload to reconnect
+                        window.location.reload();
+                    });
+                }
+            }, 100);
+        });
+        
+        // Handle typing indicators from other users
+        const typingIndicator = document.getElementById('typingIndicator');
+        const typingUsers = new Set();
+        
+        socket.on('typing', (data) => {
+            // Don't show typing indicator for the current user
+            if (data.userId === socket.id) {
+                return;
+            }
+            
+            if (data.isTyping) {
+                typingUsers.add(data.userId);
+            } else {
+                typingUsers.delete(data.userId);
+            }
+            
+            // Update the typing indicator display
+            if (typingUsers.size === 0) {
+                typingIndicator.textContent = '';
+            } else if (typingUsers.size === 1) {
+                typingIndicator.textContent = 'Someone is typing...';
+            } else {
+                typingIndicator.textContent = `${typingUsers.size} people are typing...`;
+            }
         });
         
         // Receive initial color mapping when connecting
         socket.on('user-colors', (colors) => {
             console.log('Received user colors:', colors);
-            // Update our local color map with the server's data
             Object.assign(userColors, colors);
+        });
+        
+        // Update user count display when receiving count from server
+        socket.on('user-count', (count) => {
+            console.log('User count updated:', count);
+            document.getElementById('userCount').textContent = count + (count === 1 ? ' online' : ' online');
         });
         
         // When a new user joins, add their color
@@ -141,87 +248,73 @@
             
             const isOwnMessage = messageData.userId === socket.id;
             
-            // Get the user's color from our local mapping if not provided directly
-            let messageColor = messageData.color;
-            if (!messageColor && messageData.userId) {
-                messageColor = userColors[messageData.userId];
-            }
+            // Get the user's color
+            let messageColor = messageData.color || userColors[messageData.userId] || 'bg-blue-500';
             
-            // Fallback to blue if still no color
-            if (!messageColor) {
-                messageColor = 'bg-blue-500';
-            }
+            // Create message element with Tailwind classes
+            const messageDiv = document.createElement('div');
+            messageDiv.className = isOwnMessage ? 'flex justify-end mb-2' : 'flex justify-start mb-2';
             
-            const messageElement = document.createElement('div');
-            messageElement.textContent = messageData.text;
+            const bubble = document.createElement('div');
+            bubble.className = `${messageColor} text-white p-3 rounded-lg shadow-sm max-w-[80%] break-words`;
+            bubble.textContent = messageData.text;
             
-            // Apply different styles based on whether it's the current user's message
-            if (isOwnMessage) {
-                messageElement.className = `${messageColor} text-white p-3 rounded-lg shadow-sm max-w-[80%] break-words`;
-                var wrapper = document.createElement('div');
-                wrapper.className = 'flex justify-end mb-2';
-            } else {
-                messageElement.className = `${messageColor} text-white p-3 rounded-lg shadow-sm max-w-[80%] break-words`;
-                var wrapper = document.createElement('div');
-                wrapper.className = 'flex justify-start mb-2';
-            }
-            
-            // Add a log to debug the color
-            console.log('Message color class:', messageColor);
-            
-            wrapper.appendChild(messageElement);
-            document.getElementById('messageContainer').appendChild(wrapper);
+            messageDiv.appendChild(bubble);
+            messageContainer.appendChild(messageDiv);
             
             // Auto scroll to bottom on new message
             setTimeout(() => {
-                const container = document.getElementById('messageContainer');
-                container.scrollTop = container.scrollHeight;
+                messageContainer.scrollTop = messageContainer.scrollHeight;
             }, 50);
         });
 
         // Send message function
         function sendMessage() {
-            const message = messageInput.value.trim();
-            if (message) {
-                socket.emit('chat-message', message);
-                messageInput.value = '';
+            if (connectionStatus.classList.contains('hidden')) {
+                const message = messageInput.value.trim();
+                if (message) {
+                    socket.emit('chat-message', message);
+                    messageInput.value = '';
+                }
             }
         }
         
         // Event listeners
         sendButton.addEventListener('click', sendMessage);
         
-        // Allow sending with Enter key
+        // Allow sending with Enter key and handle typing indicator
+        let typingTimeout;
         messageInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 sendMessage();
+                // Cancel typing indicator when sending
+                socket.emit('typing', false);
+                clearTimeout(typingTimeout);
+            } else {
+                // Send typing event to server
+                socket.emit('typing', true);
+                
+                // Clear typing after 2 seconds of inactivity
+                clearTimeout(typingTimeout);
+                typingTimeout = setTimeout(() => {
+                    socket.emit('typing', false);
+                }, 2000);
             }
+        });
+        
+        // Handle when user stops typing
+        messageInput.addEventListener('blur', () => {
+            socket.emit('typing', false);
+            clearTimeout(typingTimeout);
         });
         
         // Mobile focus handling
         messageInput.addEventListener('focus', () => {
-            // Small delay to allow keyboard to show up
             setTimeout(() => {
-                // Scroll to the bottom to ensure input is visible
                 window.scrollTo(0, document.body.scrollHeight);
-                // Also scroll message container
-                const container = document.getElementById('messageContainer');
-                container.scrollTop = container.scrollHeight;
+                messageContainer.scrollTop = messageContainer.scrollHeight;
             }, 300);
         });
-        
-        // Initialize viewport height fix for mobile browsers
-        function setVh() {
-            let vh = window.innerHeight * 0.01;
-            document.documentElement.style.setProperty('--vh', `${vh}px`);
-        }
-        
-        // Set the initial value
-        setVh();
-        
-        // Update on resize and orientation change
-        window.addEventListener('resize', setVh);
-        window.addEventListener('orientationchange', setVh);
     </script>
 </body>
 </html>

@@ -29,6 +29,7 @@ const io = new Server(server, {
 
 // Store user colors on the server
 const userColors = {};
+const connectedUsers = new Set(); // Track connected users
 const availableColors = [
   'bg-blue-500',
   'bg-green-500',
@@ -59,17 +60,43 @@ function assignColorToUser(userId) {
 io.on('connection', (socket) => {
   console.log('A user connected', socket.id);
   
+  // Add user to connected users set
+  connectedUsers.add(socket.id);
+  
   // Assign color to the new user
   const userColor = assignColorToUser(socket.id);
   
   // Send the current user colors to the newly connected client
   socket.emit('user-colors', userColors);
   
+  // Broadcast the updated user count to all clients
+  io.emit('user-count', connectedUsers.size);
+  
   // Announce new user to all clients with their assigned color
   io.emit('user-joined', { userId: socket.id, color: userColor });
 
   socket.on('disconnect', (reason) => {
     console.log('A user disconnected', socket.id, 'Reason:', reason);
+    
+    // Only remove user from count for permanent disconnections
+    // For temporary disconnections, we'll keep them in the set for a short grace period
+    if (reason === 'transport close' || reason === 'client namespace disconnect') {
+      // Remove user from connected users set immediately
+      connectedUsers.delete(socket.id);
+      io.emit('user-count', connectedUsers.size);
+    } else {
+      // For transient errors like transport error or ping timeout,
+      // set a timeout to allow for reconnection attempts
+      setTimeout(() => {
+        // Check if the socket is still disconnected
+        if (!io.sockets.sockets.has(socket.id)) {
+          connectedUsers.delete(socket.id);
+          io.emit('user-count', connectedUsers.size);
+          console.log('User', socket.id, 'removed after grace period');
+        }
+      }, 10000); // 10-second grace period for reconnection
+    }
+    
     // We keep the color assigned to maintain consistency if they reconnect
     
     // Force cleanup of socket on abrupt disconnections
@@ -96,11 +123,20 @@ io.on('connection', (socket) => {
         userId: socket.id,
         color: userColor
       });
+      
+      // Clear typing indicator when a message is sent
+      socket.broadcast.emit('typing', { userId: socket.id, isTyping: false });
     } catch (error) {
       console.error('Error processing message:', error);
       socket.emit('error', 'Failed to process message');
     }
-  });  
+  });
+  
+  // Handle typing events
+  socket.on('typing', (isTyping) => {
+    // Broadcast to everyone except the sender
+    socket.broadcast.emit('typing', { userId: socket.id, isTyping });
+  });
 });
 
 app.use(express.static(path.resolve('./public')));

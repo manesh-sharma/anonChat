@@ -1,13 +1,17 @@
 # AnonChat - Real-time Chat Application
 
-A real-time chat application built with Socket.IO, Express, and Tailwind CSS.
+A real-time anonymous chat application built with Socket.IO, Express, and Tailwind CSS.
 
 ## Features
 
-- Real-time messaging
-- Color-coded user messages
-- Responsive design with Tailwind CSS
-- Automatic reconnection
+- Real-time messaging with Socket.IO
+- Color-coded user messages for easy identification
+- User count tracking with live updates
+- Typing indicators
+- Connection status notifications
+- Mobile-responsive design
+- Automatic reconnection with fallback options
+- Persistent user colors
 
 ## Setup
 
